@@ -7,36 +7,63 @@ import java.util.concurrent.CyclicBarrier;
 
 import Pr2.Objetos.TipoElemento;
 
+/**
+ * Clase Main del juego de recolecta de pepitas y minas.
+ *
+ * Reglas: - Los jugadores se mueven aleatoriamente en el tablero. - Cada turno,
+ * los jugadores pueden recoger pepitas, pisar minas, o moverse. - Si un jugador
+ * recoge el número necesario de pepitas, gana la partida. - Si un jugador pisa
+ * una mina, muere y se acaba la partida.
+  * @author Sergio Mostacero.
+ * @author Hugo Jiménez.
+ */
 public class Main {
+
+	/**
+	 * Tablero del juego representado como un ConcurrentHashMap de posiciones y
+	 * elementos.
+	 */
 	static ConcurrentHashMap<Posicion, TipoElemento> campo = new ConcurrentHashMap<>();
+
+	/** Lista de jugadores. */
 	static ArrayList<Jugador> jugadores = new ArrayList<>();
-	static ArrayList<Posicion> posicionesJugadores;
+
+	/** Posiciones iniciales de los jugadores. */
+	static ArrayList<Posicion> posicionesJugadores = new ArrayList<>();
+
+	/**
+	 * Generador de números aleatorios para los movimientos
+	 */
 	static Random random = new Random();
+
+	/** Dimensiones del tablero (15x15), se puede cambiar segun los gustos del player. */
 	static int X = 15;
 	static int Y = 15;
+
+	/** Barrera cíclica que sincroniza los turnos de todos los jugadores. */
 	static CyclicBarrier barrera;
 
+	/** Boolean para indicar si el juego está activo. */
+	static volatile boolean partidaActiva = true;
+
+	/**
+	 * Main, inicializa el tablero, los jugadores y los elementos.
+	 */
 	public static void main(String[] args) {
 		// Crear jugadores
 		jugadores.add(new Jugador("Hugo", 1, "H"));
-		jugadores.add(new Jugador("Sergio", 2,"S"));
+		jugadores.add(new Jugador("Sergio", 2, "S"));
 		jugadores.add(new Jugador("Victor de Juan", 3, "V"));
 		jugadores.add(new Jugador("Daniel", 4, "D"));
 
-		// Crear máximo de objetos
-		int maxJugadores = jugadores.size();
-		int maxMina = maxJugadores / 2;
-		int maxPepita = maxJugadores * 3;
-
-		// Inicializar el campo con valores predeterminados
+		// Crea el tablero con casillas vacías
 		for (int y = 0; y < Y; y++) {
 			for (int x = 0; x < X; x++) {
 				campo.put(new Posicion(x, y), TipoElemento.VACIO);
 			}
 		}
 
-		// Asignar posiciones iniciales a los jugadores
-		posicionesJugadores = new ArrayList<>();
+		// Asignar posiciones a los jugadores
 		for (Jugador jugador : jugadores) {
 			Posicion posInicial;
 			do {
@@ -48,156 +75,69 @@ public class Main {
 			campo.put(posInicial, TipoElemento.JUGADOR);
 		}
 
-		// Establecer las posiciones de las minas
+		// Coloca minas en el tablero
+		int maxMina = jugadores.size() / 2; // Número de minas: mitad del número de jugadores
 		for (int i = 0; i < maxMina; i++) {
-			int MX, MY;
+			Posicion posMina;
 			do {
-				MX = random.nextInt(X);
-				MY = random.nextInt(Y);
-			} while (campo.get(new Posicion(MX, MY)) != TipoElemento.VACIO);
-			campo.put(new Posicion(MX, MY), TipoElemento.MINA);
+				int x = random.nextInt(X);
+				int y = random.nextInt(Y);
+				posMina = new Posicion(x, y);
+			} while (campo.get(posMina) != TipoElemento.VACIO);
+			campo.put(posMina, TipoElemento.MINA);
 		}
 
-		// Establecer las posiciones de las pepitas
+		// Coloca pepitas en el tablero
+		int maxPepita = jugadores.size() * 3; // Número de pepitas: tres veces el número de jugadores
 		for (int i = 0; i < maxPepita; i++) {
-			int PX, PY;
+			Posicion posPepita;
 			do {
-				PX = random.nextInt(X);
-				PY = random.nextInt(Y);
-			} while (campo.get(new Posicion(PX, PY)) != TipoElemento.VACIO);
-			campo.put(new Posicion(PX, PY), TipoElemento.PEPITA);
+				int x = random.nextInt(X);
+				int y = random.nextInt(Y);
+				posPepita = new Posicion(x, y);
+			} while (campo.get(posPepita) != TipoElemento.VACIO);
+			campo.put(posPepita, TipoElemento.PEPITA);
 		}
-		
-		// Concurrencia con el CyclicBarrier
-		barrera = new CyclicBarrier(jugadores.size(), imprimirTablero());
-		System.out.println("Estamos en la barrera todos los hilos!");
 
-	       for (Jugador jugador : jugadores) {
-	            new Thread(jugador).start();
-	        }
-		
+		// Inicializa la barrera para sincronizar turnos de todos los jugadores.
+		barrera = new CyclicBarrier(jugadores.size(), Main::imprimirTablero);
+
+		// Inicia los hilos de cada jugador.
+		for (int i = 0; i < jugadores.size(); i++) {
+			Jugador jugador = jugadores.get(i);
+			jugador.setPosicion(posicionesJugadores.get(i));
+			new Thread(jugador).start();
+		}
 	}
 
-	// Método para imprimir el tablero
-	public static Runnable imprimirTablero() {
+	/**
+	 * Imprime el tablerocon los elementos en sus posiciones actualizadas.
+	 */
+	public static synchronized void imprimirTablero() {
+		System.out.println("\nMapa actualizado con todos los movimientos:");
 		for (int y = 0; y < Y; y++) {
 			for (int x = 0; x < X; x++) {
 				Posicion pos = new Posicion(x, y);
 				TipoElemento elemento = campo.get(pos);
 				if (elemento == null) {
-					System.out.print("*  ");
+					System.out.print("* "); // Casilla nula (no debería suceder)
 				} else {
-					System.out.print(elemento.getSimbolo() + "  ");
+					System.out.print(elemento.getSimbolo() + " "); // Imprimir símbolo del elemento
 				}
 			}
-			System.out.println();
+			System.out.println(); // Nueva línea por cada fila
 		}
 		System.out.println();
-		return null;
 	}
-	
-	
-	
-	
-	public static void Game(ArrayList<Posicion> posicionesJugadores) {
-		// Movimiento de los jugadores por turnos
-		int[] fortuna = new int[jugadores.size()]; // Cada jugador tiene su propio contador de pepitas
-		boolean partidaTermina = false; //
 
-		do {
-				
-		        System.out.println("Turno de " + jugadores.get(0).getName());
-		        Posicion posActual = posicionesJugadores.get(0); // Toma la posición actual del ArrayList de posiciones del jugador
-		        int JugX = posActual.getX();
-		        int JugY = posActual.getY();
-		        int seleccion = random.nextInt(1, 9); // Movimiento aleatorio para las fichas
-		        switch (seleccion) {
-		        case 1 -> {
-		            JugX++;
-		            System.out.println("X - Derecha");
-		        }
-		        case 2 -> {
-		            JugX--;
-		            System.out.println("X - Izquierda");
-		        }
-		        case 3 -> {
-		            JugY++;
-		            System.out.println("Y - Abajo");
-		        }
-		        case 4 -> {
-		            JugY--;
-		            System.out.println("Y - Arriba");
-		        }
-		        case 5 -> {
-		            JugX++;
-		            JugY--;
-		            System.out.println("X - Derecha, Y - Arriba");
-		        }
-		        case 6 -> {
-		            JugX++;
-		            JugY++;
-		            System.out.println("X - Derecha, Y - Abajo");
-		        }
-		        case 7 -> {
-		            JugX--;
-		            JugY--;
-		            System.out.println("X - Izquierda, Y - Arriba");
-		        }
-		        case 8 -> {
-		            JugX--;
-		            JugY++;
-		            System.out.println("X - Izquierda, Y - Abajo");
-		        }
-		        default -> System.out.println("Movimiento erróneo");
-		        }
-
-		        // Verificar si la nueva posición está dentro de los límites del mapa
-		        if (JugX >= 0 && JugX < X && JugY >= 0 && JugY < Y) {
-		            // Solo actualizar la posición si está dentro del mapa
-		            Posicion nuevaPos = new Posicion(JugX, JugY);
-		            TipoElemento elemento = campo.get(nuevaPos);
-		            switch (elemento) {
-		            case PEPITA -> {
-		                fortuna[0]++;
-		                System.out.println(jugadores.get(0).getName() + " ha recogido una pepita. Fortuna: " + fortuna[0]);
-		            }
-		            case MINA -> {
-		                System.out.println(jugadores.get(0).getName() + " ha pisado una mina. ¡Queda fuera del juego!");
-		                posicionesJugadores.remove(0);
-		                jugadores.remove(0);
-		                if (jugadores.isEmpty()) {
-		                    System.out.println("FINAL DE PARTIDA, Todos los jugadores han perdido.");
-		                    partidaTermina = true;
-		                }
-		            }
-		            case JUGADOR -> {
-		                System.out.println("Ya hay un jugador en esa posición.");
-		            }
-		            default -> System.out.println(jugadores.get(0).getName() + ": movimiento valido.");
-		            }
-
-		            // Cambiar variables para limpiar la casilla donde estaba el jugador y actualizar la nueva
-		            campo.put(posActual, TipoElemento.VACIO);
-		            campo.put(nuevaPos, TipoElemento.JUGADOR);
-		            posicionesJugadores.set(0, nuevaPos);
-		        } else {
-		            // Borde para que el jugador no se salga del mapa, ese turno seria invalido y tendria que esperar al siguiente para jugar
-		            System.out.println("El movimiento está fuera del mapa. El jugador no se mueve.");
-		        }
-
-		        // Si la fortuna es igual a 4 ha ganada (cambiar el numero para determinar el valor de la victoria)
-		        int victoria = 3;
-		        if (fortuna[0] >= victoria) {
-		            System.out.println(jugadores.get(0).getName() + " ha ganado la partida con " + victoria + " pepitas.");
-		            partidaTermina = true;
-		        }
-
-		        // Sleep para hacer una pausa entre turnos y poder ver la partida mas tranquilo, ajustable a la necesidad de lectura 
-		        try {
-		            Thread.sleep(1000);
-		        } catch (InterruptedException e) {
-		            System.err.println("Error en la pausa: " + e.getMessage());
-		        }
-		} while (!partidaTermina);
+	/**
+	 * Acaba la partida y declara un ganador.
+	 * 
+	 * @param ganador Nombre del jugador que ha ganado.
+	 */
+	public static void finalizarJuego(String ganador) {
+		partidaActiva = false; // Cambiar estado de la partida
+		System.out.println("\nJuego finalizado. Ganador: " + ganador);
+		System.exit(0); // Finalizar ejecución del programa
 	}
 }
